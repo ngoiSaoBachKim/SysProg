@@ -1,41 +1,41 @@
 
-// FileScanner.cpp : Defines the class behaviors for the application.
+// MFCApplication1.cpp : Defines the class behaviors for the application.
 //
 
 #include "pch.h"
 #include "framework.h"
-#include "FileScanner.h"
-#include "FileScannerDlg.h"
+#include "MFCApplication1.h"
+#include "MFCApplication1Dlg.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
 
-// CFileScannerApp
+// CMFCApplication1App
 
-BEGIN_MESSAGE_MAP(CFileScannerApp, CWinApp)
+BEGIN_MESSAGE_MAP(CMFCApplication1App, CWinApp)
 	ON_COMMAND(ID_HELP, &CWinApp::OnHelp)
 END_MESSAGE_MAP()
 
 
-// CFileScannerApp construction
+// CMFCApplication1App construction
 
-CFileScannerApp::CFileScannerApp()
+CMFCApplication1App::CMFCApplication1App()
 {
 	// TODO: add construction code here,
 	// Place all significant initialization in InitInstance
 }
 
 
-// The one and only CFileScannerApp object
+// The one and only CMFCApplication1App object
 
-CFileScannerApp theApp;
+CMFCApplication1App theApp;
 
 
-// CFileScannerApp initialization
+// CMFCApplication1App initialization
 
-BOOL CFileScannerApp::InitInstance()
+BOOL CMFCApplication1App::InitInstance()
 {
 	CWinApp::InitInstance();
 
@@ -56,10 +56,9 @@ BOOL CFileScannerApp::InitInstance()
 	// such as the name of your company or organization
 	SetRegistryKey(_T("Local AppWizard-Generated Applications"));
 
-	CFileScannerDlg dlg;
+	CMFCApplication1Dlg dlg;
 	m_pMainWnd = &dlg;
 	INT_PTR nResponse = dlg.DoModal();
-
 	if (nResponse == -1)
 	{
 		TRACE(traceAppMsg, 0, "Warning: dialog creation failed, so application is terminating unexpectedly.\n");
