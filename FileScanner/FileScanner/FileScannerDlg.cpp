@@ -59,12 +59,17 @@ CFileScannerDlg::CFileScannerDlg(CWnd* pParent /*=nullptr*/)
 void CFileScannerDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
+	DDX_Control(pDX, IDC_LIST, fileList);
+	DDX_Control(pDX, IDC_EDIT_PATH, editPath);
+	DDX_Control(pDX, IDC_EDIT_NAME, editName);
+	DDX_Control(pDX, IDC_BUTTON, button);
 }
 
 BEGIN_MESSAGE_MAP(CFileScannerDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
+	ON_BN_CLICKED(IDC_BUTTON, &CFileScannerDlg::OnBnClickedButton)
 END_MESSAGE_MAP()
 
 
@@ -100,6 +105,13 @@ BOOL CFileScannerDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
 	// TODO: Add extra initialization here
+	fileList.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
+	fileList.InsertColumn(0, _T("File Name"), LVCFMT_LEFT, 186);
+	fileList.InsertColumn(1, _T("Size"), LVCFMT_LEFT, 70);
+	fileList.InsertColumn(2, _T("Full path"), LVCFMT_LEFT, 380);
+	fileList.InsertColumn(3, _T("Modified date"), LVCFMT_LEFT, 120);
+	fileList.InsertColumn(3, _T("Created date"), LVCFMT_LEFT, 120);
+	UpdateData(FALSE);
 
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
@@ -153,3 +165,11 @@ HCURSOR CFileScannerDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+
+
+void CFileScannerDlg::OnBnClickedButton()
+{
+	UpdateData(TRUE);
+	fileList.DeleteAllItems();
+	UpdateData(FALSE);
+}

@@ -7,10 +7,11 @@
 #define IDS_ABOUTBOX                    101
 #define IDD_FILESCANNER_DIALOG          102
 #define IDR_MAINFRAME                   128
-#define IDC_EDIT1                       1000
-#define IDC_EDIT2                       1001
-#define IDC_BUTTON1                     1002
+#define IDC_BUTTON                      1000
+#define IDC_EDIT_PATH                   1001
+#define IDC_EDIT_NAME                   1002
 #define IDC_LIST1                       1003
+#define IDC_LIST                        1003
 
 // Next default values for new objects
 // 

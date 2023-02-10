@@ -20,7 +20,7 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
-    <ProjectGuid>{36A81110-8C8B-4D67-AE0D-2EC2B85725BD}</ProjectGuid>
+    <ProjectGuid>{218A64C4-632E-40C0-B557-30F1ED803697}</ProjectGuid>
     <Keyword>MFCProj</Keyword>
     <RootNamespace>FileScanner</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
