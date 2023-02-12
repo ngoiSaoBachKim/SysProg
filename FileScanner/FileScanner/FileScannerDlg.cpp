@@ -187,7 +187,13 @@ void CFileScannerDlg::OnBnClickedButton()
 	}
 	std::stack<CString> folderStack;
 	folderStack.push(neededFilePath);
-
+	WIN32_FIND_DATA findData;
+	HANDLE hInitFind = FindFirstFile(neededFilePath + _T("\\*"), &findData);
+	if (hInitFind == INVALID_HANDLE_VALUE) {
+		MessageBox((LPCWSTR)L"File path not exist, try again.", (LPCWSTR)L"Error", MB_ICONWARNING | MB_DEFBUTTON2);
+		UpdateData(FALSE);
+		return;
+	}
 	while (!folderStack.empty()) {
 		currentFolder = folderStack.top();
 		folderStack.pop();
@@ -195,11 +201,6 @@ void CFileScannerDlg::OnBnClickedButton()
 		CString searchPath = currentFolder + _T("\\*");
 		WIN32_FIND_DATA findData;
 		HANDLE hFind = FindFirstFile(searchPath, &findData);
-		if (hFind == INVALID_HANDLE_VALUE) {
-			MessageBox((LPCWSTR)L"File path not exist, try again.", (LPCWSTR)L"Error", MB_ICONWARNING | MB_DEFBUTTON2);
-			UpdateData(FALSE);
-			return;
-		}
 		{
 			do {
 				CString fileName = findData.cFileName;
