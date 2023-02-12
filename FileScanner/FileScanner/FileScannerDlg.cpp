@@ -7,6 +7,7 @@
 #include "FileScanner.h"
 #include "FileScannerDlg.h"
 #include "afxdialogex.h"
+#include <stack>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -106,8 +107,8 @@ BOOL CFileScannerDlg::OnInitDialog()
 
 	// TODO: Add extra initialization here
 	fileList.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
-	fileList.InsertColumn(0, _T("File Name"), LVCFMT_LEFT, 186);
-	fileList.InsertColumn(1, _T("Size"), LVCFMT_LEFT, 70);
+	fileList.InsertColumn(0, _T("File Name"), LVCFMT_LEFT, 176);
+	fileList.InsertColumn(1, _T("Size(Byte)"), LVCFMT_LEFT, 90);
 	fileList.InsertColumn(2, _T("Full path"), LVCFMT_LEFT, 380);
 	fileList.InsertColumn(3, _T("Modified date"), LVCFMT_LEFT, 120);
 	fileList.InsertColumn(3, _T("Created date"), LVCFMT_LEFT, 120);
@@ -166,10 +167,91 @@ HCURSOR CFileScannerDlg::OnQueryDragIcon()
 }
 
 
-
 void CFileScannerDlg::OnBnClickedButton()
 {
 	UpdateData(TRUE);
 	fileList.DeleteAllItems();
-	UpdateData(FALSE);
+
+	CString neededFilePath;
+	CString neededFileName;
+	CString currentFolder;
+	CString outputBuffer;
+
+	editPath.GetWindowText(neededFilePath);
+	editName.GetWindowText(neededFileName);
+
+	if (neededFilePath.IsEmpty()) {
+		MessageBox((LPCWSTR)L"File path empty, try again.", (LPCWSTR)L"Error", MB_ICONWARNING | MB_DEFBUTTON2);
+		UpdateData(FALSE);
+		return;
+	}
+	std::stack<CString> folderStack;
+	folderStack.push(neededFilePath);
+
+	while (!folderStack.empty()) {
+		currentFolder = folderStack.top();
+		folderStack.pop();
+
+		CString searchPath = currentFolder + _T("\\*");
+		WIN32_FIND_DATA findData;
+		HANDLE hFind = FindFirstFile(searchPath, &findData);
+		if (hFind == INVALID_HANDLE_VALUE) {
+			MessageBox((LPCWSTR)L"File path not exist, try again.", (LPCWSTR)L"Error", MB_ICONWARNING | MB_DEFBUTTON2);
+			UpdateData(FALSE);
+			return;
+		}
+		{
+			do {
+				CString fileName = findData.cFileName;
+				if (fileName == _T(".") || fileName == _T("..")) {
+					continue;
+				}
+
+				CString fullPath = currentFolder + _T("\\") + fileName;
+				if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+					folderStack.push(fullPath);
+
+				}
+				else if (fileName.Find(neededFileName) != -1) {
+					fileList.InsertItem(0, fileName);
+					outputBuffer.Format(_T("%ld"), ((__int64)findData.nFileSizeLow + ((__int64)findData.nFileSizeHigh << 32)));
+					fileList.SetItemText(0, 1, outputBuffer);
+					fileList.SetItemText(0, 2, fullPath);
+
+					FILETIME ft = findData.ftLastWriteTime;
+					WCHAR dateTime[100];
+					SHFormatDateTimeW(&ft, NULL, dateTime, 100);
+					fileList.SetItemText(0, 4, dateTime);
+
+					ft = findData.ftCreationTime;
+					SHFormatDateTimeW(&ft, NULL, dateTime, 100);
+					fileList.SetItemText(0, 3, dateTime);
+
+				}
+			} while (FindNextFile(hFind, &findData));
+
+			FindClose(hFind);
+		}
+		//MessageBox((LPCWSTR)fileList.GetEmptyText(), (LPCWSTR)L"Error", MB_ICONWARNING | MB_DEFBUTTON2);
+		UpdateData(FALSE);
+	}
 }
+/*
+stack of path;
+push path
+
+while stack !empty
+	currentPath = stack pop
+	hFile = findfirstfile
+	if valid
+		do
+			if directory
+				push currentPath + directory name
+				continue
+			else
+				if currentFileName != neededFileName
+					continue
+				currentFileName.printNeededInfomation
+		while FindNextFile(hFile)
+	else error
+*/
