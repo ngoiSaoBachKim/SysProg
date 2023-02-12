@@ -40,6 +40,7 @@ CAboutDlg::CAboutDlg() : CDialogEx(IDD_ABOUTBOX)
 void CAboutDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
+
 }
 
 BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
@@ -59,12 +60,15 @@ CProcessViewerDlg::CProcessViewerDlg(CWnd* pParent /*=nullptr*/)
 void CProcessViewerDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
+	DDX_Control(pDX, IDC_BUTTON, buttonRefresh);
+	DDX_Control(pDX, IDC_LIST, listCtrlProcess);
 }
 
 BEGIN_MESSAGE_MAP(CProcessViewerDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
+	ON_BN_CLICKED(IDC_BUTTON, &CProcessViewerDlg::OnBnClickedButton)
 END_MESSAGE_MAP()
 
 
@@ -100,7 +104,11 @@ BOOL CProcessViewerDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
 	// TODO: Add extra initialization here
-
+	listCtrlProcess.InsertColumn(0, _T("PID"), LVCFMT_LEFT, 64);
+	listCtrlProcess.InsertColumn(1, _T("Name"), LVCFMT_LEFT, 200);
+	listCtrlProcess.InsertColumn(2, _T("Command line"), LVCFMT_LEFT, 400);
+	listCtrlProcess.InsertColumn(3, _T("Full path"), LVCFMT_LEFT, 400);
+	UpdateData(FALSE);
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
 
@@ -153,3 +161,9 @@ HCURSOR CProcessViewerDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+
+
+void CProcessViewerDlg::OnBnClickedButton()
+{
+	// TODO: Add your control notification handler code here
+}
