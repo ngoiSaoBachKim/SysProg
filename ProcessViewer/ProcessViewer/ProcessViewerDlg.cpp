@@ -2,16 +2,20 @@
 // ProcessViewerDlg.cpp : implementation file
 //
 
+#include <Windows.h>
 #include "pch.h"
 #include "framework.h"
 #include "ProcessViewer.h"
 #include "ProcessViewerDlg.h"
 #include "afxdialogex.h"
+#include <tlhelp32.h>
+#include <processthreadsapi.h>
+#include <winternl.h>
+#include <psapi.h>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
-
 
 // CAboutDlg dialog used for App About
 
@@ -104,10 +108,12 @@ BOOL CProcessViewerDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
 	// TODO: Add extra initialization here
+	listCtrlProcess.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
 	listCtrlProcess.InsertColumn(0, _T("PID"), LVCFMT_LEFT, 64);
-	listCtrlProcess.InsertColumn(1, _T("Name"), LVCFMT_LEFT, 200);
+	listCtrlProcess.InsertColumn(1, _T("Process Name"), LVCFMT_LEFT, 200);
 	listCtrlProcess.InsertColumn(2, _T("Command line"), LVCFMT_LEFT, 400);
 	listCtrlProcess.InsertColumn(3, _T("Full path"), LVCFMT_LEFT, 400);
+	FetchProcess();
 	UpdateData(FALSE);
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
@@ -161,9 +167,72 @@ HCURSOR CProcessViewerDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+typedef NTSTATUS(NTAPI* _NtQueryInformationProcess)(
+	HANDLE ProcessHandle,
+	DWORD ProcessInformationClass,
+	PVOID ProcessInformation,
+	DWORD ProcessInformationLength,
+	PDWORD ReturnLength
+	);
 
+void CProcessViewerDlg::FetchProcess() {
+	int listIndex;
+	CString pID;
+	HANDLE hSnapshot;
+	HANDLE hProcess;
+	PROCESSENTRY32 pe32;
+	PROCESS_BASIC_INFORMATION pbi;
+	PVOID pebAddress;
+	PVOID rtlUserProcParamsAddress;
+	UNICODE_STRING uCommandline;
+	WCHAR* commandline;
+	CString cCommandline;
+	TCHAR filepath[256];
+	CString cFilePath;
+
+	hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (hSnapshot == INVALID_HANDLE_VALUE)
+		return;
+	pe32.dwSize = sizeof PROCESSENTRY32;
+	if (!Process32First(hSnapshot, &pe32)) {
+		CloseHandle(hSnapshot);
+		return;
+	}
+	do {
+		listIndex = listCtrlProcess.GetItemCount();
+		pID.Format(_T("%d"), pe32.th32ProcessID);
+		listCtrlProcess.InsertItem(listIndex, pID);
+		listCtrlProcess.SetItemText(listIndex, 1, pe32.szExeFile);
+
+		hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pe32.th32ProcessID);
+		// get command line from peb of current process
+		_NtQueryInformationProcess NtQueryInformationProcess = (_NtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+		NtQueryInformationProcess(hProcess, ProcessBasicInformation, &pbi, sizeof(pbi), NULL);
+		if (ReadProcessMemory(hProcess, &(((_PEB*)pbi.PebBaseAddress)->ProcessParameters), &rtlUserProcParamsAddress, sizeof(PVOID), NULL))
+			if (ReadProcessMemory(hProcess, &(((_RTL_USER_PROCESS_PARAMETERS*)rtlUserProcParamsAddress)->CommandLine), &uCommandline, sizeof(uCommandline), NULL)) {
+				commandline = (WCHAR*)malloc(uCommandline.Length);
+				if (ReadProcessMemory(hProcess, uCommandline.Buffer, commandline, uCommandline.Length, NULL)) {
+					cCommandline.Format(_T("%.*s"), uCommandline.Length / 2, commandline);
+					listCtrlProcess.SetItemText(listIndex, 2, cCommandline);
+				}
+				free(commandline);
+			}
+		// get full file path
+		cFilePath.Format(_T("%.*s"), GetModuleFileNameEx(hProcess, 0, filepath, 255), filepath);
+		listCtrlProcess.SetItemText(listIndex, 3, cFilePath);
+		CloseHandle(hProcess);
+
+	} while (Process32Next(hSnapshot, &pe32));
+	CloseHandle(hSnapshot);
+	listIndex = listCtrlProcess.GetItemCount();
+	pID.Format(_T("%d"), listIndex);
+	listCtrlProcess.InsertItem(listIndex, pID);
+}
 
 void CProcessViewerDlg::OnBnClickedButton()
 {
-	// TODO: Add your control notification handler code here
+	UpdateData(TRUE);
+	listCtrlProcess.DeleteAllItems();
+	FetchProcess();
+	UpdateData(FALSE);
 }

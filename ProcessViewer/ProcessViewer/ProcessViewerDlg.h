@@ -35,4 +35,5 @@ protected:
 	CListCtrl listCtrlProcess;
 public:
 	afx_msg void OnBnClickedButton();
+	void FetchProcess();
 };
