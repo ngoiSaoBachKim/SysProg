@@ -167,7 +167,7 @@ HCURSOR CProcessViewerDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
-typedef NTSTATUS(NTAPI* _NtQueryInformationProcess)(
+typedef NTSTATUS(NTAPI* FuncPointer)(
 	HANDLE ProcessHandle,
 	DWORD ProcessInformationClass,
 	PVOID ProcessInformation,
@@ -176,58 +176,63 @@ typedef NTSTATUS(NTAPI* _NtQueryInformationProcess)(
 	);
 
 void CProcessViewerDlg::FetchProcess() {
-	int listIndex;
+	PROCESSENTRY32 processEntry;
+	int listIndex = 0;
 	CString pID;
-	HANDLE hSnapshot;
-	HANDLE hProcess;
-	PROCESSENTRY32 pe32;
-	PROCESS_BASIC_INFORMATION pbi;
-	PVOID pebAddress;
+	HANDLE processHandle;
+	PROCESS_BASIC_INFORMATION processBasicInfo;
 	PVOID rtlUserProcParamsAddress;
-	UNICODE_STRING uCommandline;
-	WCHAR* commandline;
-	CString cCommandline;
-	TCHAR filepath[256];
-	CString cFilePath;
+	UNICODE_STRING commandLineUnicodeString;
+	TCHAR* commandLineBuffer;
+	CString commandLineString;
+	TCHAR filePath[256];
+	CString filePathString;
 
-	hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	if (hSnapshot == INVALID_HANDLE_VALUE)
-		return;
-	pe32.dwSize = sizeof PROCESSENTRY32;
-	if (!Process32First(hSnapshot, &pe32)) {
-		CloseHandle(hSnapshot);
+	HANDLE snapshotHandle = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (snapshotHandle == INVALID_HANDLE_VALUE) {
 		return;
 	}
+
+	processEntry.dwSize = sizeof(PROCESSENTRY32);
+	if (!Process32First(snapshotHandle, &processEntry)) {
+		CloseHandle(snapshotHandle);
+		return;
+	}
+
 	do {
 		listIndex = listCtrlProcess.GetItemCount();
-		pID.Format(_T("%d"), pe32.th32ProcessID);
+		pID.Format(_T("%d"), processEntry.th32ProcessID);
 		listCtrlProcess.InsertItem(listIndex, pID);
-		listCtrlProcess.SetItemText(listIndex, 1, pe32.szExeFile);
+		//print current processHandle PID
+		listCtrlProcess.SetItemText(listIndex, 1, processEntry.szExeFile);
 
-		hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pe32.th32ProcessID);
-		// get command line from peb of current process
-		_NtQueryInformationProcess NtQueryInformationProcess = (_NtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
-		NtQueryInformationProcess(hProcess, ProcessBasicInformation, &pbi, sizeof(pbi), NULL);
-		if (ReadProcessMemory(hProcess, &(((_PEB*)pbi.PebBaseAddress)->ProcessParameters), &rtlUserProcParamsAddress, sizeof(PVOID), NULL))
-			if (ReadProcessMemory(hProcess, &(((_RTL_USER_PROCESS_PARAMETERS*)rtlUserProcParamsAddress)->CommandLine), &uCommandline, sizeof(uCommandline), NULL)) {
-				commandline = (WCHAR*)malloc(uCommandline.Length);
-				if (ReadProcessMemory(hProcess, uCommandline.Buffer, commandline, uCommandline.Length, NULL)) {
-					cCommandline.Format(_T("%.*s"), uCommandline.Length / 2, commandline);
-					listCtrlProcess.SetItemText(listIndex, 2, cCommandline);
+		processHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processEntry.th32ProcessID);
+
+		//get NTQueryInformationProcess function from ntdll.dll
+		FuncPointer ntQueryInformationProcess = (FuncPointer)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+		ntQueryInformationProcess(processHandle, ProcessBasicInformation, &processBasicInfo, sizeof(processBasicInfo), NULL);
+
+		//get and print current processHandle command line 
+		if (ReadProcessMemory(processHandle, &(((_PEB*)processBasicInfo.PebBaseAddress)->ProcessParameters), &rtlUserProcParamsAddress, sizeof(PVOID), NULL)) {
+			if (ReadProcessMemory(processHandle, &(((_RTL_USER_PROCESS_PARAMETERS*)rtlUserProcParamsAddress)->CommandLine), &commandLineUnicodeString, sizeof(commandLineUnicodeString), NULL)) {
+				commandLineBuffer = (WCHAR*)malloc(commandLineUnicodeString.Length);
+				if (ReadProcessMemory(processHandle, commandLineUnicodeString.Buffer, commandLineBuffer, commandLineUnicodeString.Length, NULL)) {
+					commandLineString.Format(_T("%.*s"), commandLineUnicodeString.Length / 2, commandLineBuffer);
+					listCtrlProcess.SetItemText(listIndex, 2, commandLineString);
 				}
-				free(commandline);
+				free(commandLineBuffer);
 			}
-		// get full file path
-		cFilePath.Format(_T("%.*s"), GetModuleFileNameEx(hProcess, 0, filepath, 255), filepath);
-		listCtrlProcess.SetItemText(listIndex, 3, cFilePath);
-		CloseHandle(hProcess);
+		}
+		filePathString.Format(_T("%.*s"), GetModuleFileNameEx(processHandle, 0, filePath, 255), filePath);
+		//print current processHandle path
+		listCtrlProcess.SetItemText(listIndex, 3, filePathString);
+		CloseHandle(processHandle);
 
-	} while (Process32Next(hSnapshot, &pe32));
-	CloseHandle(hSnapshot);
-	listIndex = listCtrlProcess.GetItemCount();
-	pID.Format(_T("%d"), listIndex);
-	listCtrlProcess.InsertItem(listIndex, pID);
+	} while (Process32Next(snapshotHandle, &processEntry));
+
+	CloseHandle(snapshotHandle);
 }
+
 
 void CProcessViewerDlg::OnBnClickedButton()
 {

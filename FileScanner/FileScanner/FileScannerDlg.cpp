@@ -166,6 +166,26 @@ HCURSOR CFileScannerDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+/* algorithm:
+
+stack of path;
+push path
+
+while stack !empty
+	currentPath = stack pop
+	hFile = findfirstfile
+	if valid
+		do
+			if directory
+				push currentPath + directory name
+				continue
+			else
+				if currentFileName != neededFileName
+					continue
+				printNeededInfomation(currentFileName)
+		while FindNextFile(hFile)
+	else error
+*/
 
 void CFileScannerDlg::OnBnClickedButton()
 {
@@ -180,6 +200,7 @@ void CFileScannerDlg::OnBnClickedButton()
 	editPath.GetWindowText(neededFilePath);
 	editName.GetWindowText(neededFileName);
 
+	//exceptions:
 	if (neededFilePath.IsEmpty()) {
 		MessageBox((LPCWSTR)L"File path empty, try again.", (LPCWSTR)L"Error", MB_ICONWARNING | MB_DEFBUTTON2);
 		UpdateData(FALSE);
@@ -194,6 +215,8 @@ void CFileScannerDlg::OnBnClickedButton()
 		UpdateData(FALSE);
 		return;
 	}
+
+	//recursive search using stack of folder
 	while (!folderStack.empty()) {
 		currentFolder = folderStack.top();
 		folderStack.pop();
@@ -213,6 +236,7 @@ void CFileScannerDlg::OnBnClickedButton()
 					folderStack.push(fullPath);
 
 				}
+				//if correct filename
 				else if (fileName.Find(neededFileName) != -1) {
 					fileList.InsertItem(0, fileName);
 					outputBuffer.Format(_T("%ld"), ((__int64)findData.nFileSizeLow + ((__int64)findData.nFileSizeHigh << 32)));
@@ -233,26 +257,6 @@ void CFileScannerDlg::OnBnClickedButton()
 
 			FindClose(hFind);
 		}
-		//MessageBox((LPCWSTR)fileList.GetEmptyText(), (LPCWSTR)L"Error", MB_ICONWARNING | MB_DEFBUTTON2);
 		UpdateData(FALSE);
 	}
 }
-/*
-stack of path;
-push path
-
-while stack !empty
-	currentPath = stack pop
-	hFile = findfirstfile
-	if valid
-		do
-			if directory
-				push currentPath + directory name
-				continue
-			else
-				if currentFileName != neededFileName
-					continue
-				currentFileName.printNeededInfomation
-		while FindNextFile(hFile)
-	else error
-*/
