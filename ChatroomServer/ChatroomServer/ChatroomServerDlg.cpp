@@ -200,7 +200,9 @@ HCURSOR CChatroomServerDlg::OnQueryDragIcon()
 void CChatroomServerDlg::OnBnClickedButton1()
 {
 	UpdateData(TRUE);
-	CString strStartStatus;
+	CString strStartStatus, strTime, strError;
+	SYSTEMTIME st;
+	int indexLog;
 	button1.GetWindowText(strStartStatus);
 
 	if (strStartStatus == _T("Start")) {
@@ -209,7 +211,13 @@ void CChatroomServerDlg::OnBnClickedButton1()
 		// Initialize Winsock
 		memset(&wsaData, 0, sizeof(wsaData));
 		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-			MessageBox((LPCWSTR)L"Successfully failed to start server(Initializing Winsock failed), try again.", (LPCWSTR)L"Error", MB_ICONWARNING | MB_DEFBUTTON2);
+			GetLocalTime(&st);
+			strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
+				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+			indexLog = listLog.GetItemCount();
+			listLog.InsertItem(indexLog, strTime);
+			strError.Format(_T("Successfully failed to initializing Winsock failed(error code %ld)."), WSAGetLastError());
+			listLog.SetItemText(indexLog, 1, strError);
 			return;
 		}
 		struct addrinfo* result = NULL, * ptr = NULL, hints;
@@ -225,27 +233,60 @@ void CChatroomServerDlg::OnBnClickedButton1()
 		CString port = editPort.GetString();
 
 		if (getaddrinfo((PCSTR)(CStringA)ip, (PCSTR)(CStringA)port, &hints, &result) != 0) {
-			MessageBox((LPCWSTR)L"Successfully failed to start server(Get address info failed), try again.", (LPCWSTR)L"Error", MB_ICONWARNING | MB_DEFBUTTON2);
+			GetLocalTime(&st);
+			strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
+				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+			indexLog = listLog.GetItemCount();
+			listLog.InsertItem(indexLog, strTime);
+			strError.Format(_T("Successfully failed to get address info(error code %ld)."), WSAGetLastError());
+			listLog.SetItemText(indexLog, 1, strError);
 			WSACleanup();
 			return;
 		}
+		// Create a socket for listening to clients
 		SOCKET ListenSocket = INVALID_SOCKET;
 		ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
 		if (ListenSocket == INVALID_SOCKET) {
-			printf("Error at socket(): %ld\n", WSAGetLastError());
+			GetLocalTime(&st);
+			strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
+				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+			indexLog = listLog.GetItemCount();
+			listLog.InsertItem(indexLog, strTime);
+			strError.Format(_T("Successfully managed to get error at socket(): %ld."), WSAGetLastError());
+			listLog.SetItemText(indexLog, 1, strError);
 			freeaddrinfo(result);
 			WSACleanup();
 			return;
 		}
-		// Setup the TCP listening socket
+		// Bind the socket to a local address and port
 		if (bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen) == SOCKET_ERROR) {
-			MessageBox((LPCWSTR)L"Successfully failed to start server(bind failed), try again.", (LPCWSTR)L"Error", MB_ICONWARNING | MB_DEFBUTTON2);
+			GetLocalTime(&st);
+			strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
+				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+			indexLog = listLog.GetItemCount();
+			listLog.InsertItem(indexLog, strTime);
+			strError.Format(_T("Successfully failed to bind with error code: %ld."), WSAGetLastError());
+			listLog.SetItemText(indexLog, 1, strError);
 			freeaddrinfo(result);
 			closesocket(ListenSocket);
 			WSACleanup();
 			return;
 		}
 		freeaddrinfo(result);
+		// Listening on a Socket
+		if (listen(ListenSocket, SOMAXCONN) == SOCKET_ERROR) {
+			GetLocalTime(&st);
+			strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
+				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+			indexLog = listLog.GetItemCount();
+			listLog.InsertItem(indexLog, strTime);
+			strError.Format(_T("Successfully failed to listen with error code: %ld."), WSAGetLastError());
+			listLog.SetItemText(indexLog, 1, strError);
+			closesocket(ListenSocket);
+			WSACleanup();
+			return;
+		}
+
 		button1.SetWindowText(_T("Stop"));
 	}
 	else {
