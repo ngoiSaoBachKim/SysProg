@@ -36,7 +36,21 @@ Báo cáo với người hướng dẫn để nhận flag
 #include <atlstr.h>
 #include <cstring>
 #include <string>
+#include <vector>
+#include <atlconv.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <strsafe.h>
+#include <Windows.h>
+// ServerDlg.cpp : implementation file
 
+#ifdef _DEBUG
+#define new DEBUG_NEW
+#endif
+
+
+#define xmalloc(s) HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,(s))
+#define xfree(p)   HeapFree(GetProcessHeap(),0,(p))
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -196,19 +210,58 @@ HCURSOR CChatroomServerDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+char* g_Port = DEFAULT_PORT;
+BOOL g_bEndServer = FALSE;			// set to TRUE on CTRL-C
+BOOL g_bRestart = TRUE;				// set to TRUE to CTRL-BRK
+BOOL g_bVerbose = FALSE;
+DWORD g_dwThreadCount = 0;		//worker thread count
+HANDLE g_hIOCP = INVALID_HANDLE_VALUE;
+SOCKET g_sdListen = INVALID_SOCKET;
+HANDLE g_ThreadHandles[MAX_WORKER_THREAD];
+PPER_SOCKET_CONTEXT g_pCtxtList = NULL;
 
 void CChatroomServerDlg::OnBnClickedButton1()
 {
 	UpdateData(TRUE);
+	// Update button text and state
 	CString strStartStatus, strTime, strError;
+	button1.GetWindowText(strStartStatus);
+	if (strStartStatus == _T("Start"))
+	{
+		SYSTEM_INFO systemInfo;
+		WSADATA wsaData;
+		SOCKET sdAccept = INVALID_SOCKET;
+		PPER_SOCKET_CONTEXT lpPerSocketContext = NULL;
+		DWORD dwRecvNumBytes = 0;
+		DWORD dwFlags = 0;
+		int nRet = 0;
+		button1.SetWindowText(_T("Stop"));
+	}
+	else {
+		// Stop the server
+
+		// Update button text and state
+		button1.SetWindowText(_T("Start"));
+	}
+	UpdateData(FALSE);
+}
+
+/*
+ 		SetEvent(g_exitEvent);
+		CloseHandle(g_exitEvent);
+		closesocket(ListenSocket);
+		ListenSocket = INVALID_SOCKET;
+void CChatroomServerDlg::OnBnClickedButton1()
+{
+	UpdateData(TRUE);
+	CString strStartStatus, strTime, strError;
+	button1.GetWindowText(strStartStatus);
 	SYSTEMTIME st;
 	int indexLog;
-	button1.GetWindowText(strStartStatus);
-
-	if (strStartStatus == _T("Start")) {
+	if (strStartStatus == _T("Start"))
+	{
+		// Start the server
 		WSADATA wsaData;
-
-		// Initialize Winsock
 		memset(&wsaData, 0, sizeof(wsaData));
 		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
 			GetLocalTime(&st);
@@ -216,11 +269,11 @@ void CChatroomServerDlg::OnBnClickedButton1()
 				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
 			indexLog = listLog.GetItemCount();
 			listLog.InsertItem(indexLog, strTime);
-			strError.Format(_T("Successfully failed to initializing Winsock failed(error code %ld)."), WSAGetLastError());
-			listLog.SetItemText(indexLog, 1, strError);
+			strError.Format(_T("Successfully failed to initializing Winsock);
+				listLog.SetItemText(indexLog, 1, strError);
 			return;
 		}
-		struct addrinfo* result = NULL, * ptr = NULL, hints;
+		struct addrinfo* serverAddrInfo = NULL, hints;
 
 		memset(&hints, 0, sizeof(hints));
 		hints.ai_family = AF_INET;
@@ -232,7 +285,7 @@ void CChatroomServerDlg::OnBnClickedButton1()
 		CString ip = editIP.GetString();
 		CString port = editPort.GetString();
 
-		if (getaddrinfo((PCSTR)(CStringA)ip, (PCSTR)(CStringA)port, &hints, &result) != 0) {
+		if (getaddrinfo((PCSTR)(CStringA)ip, (PCSTR)(CStringA)port, &hints, &serverAddrInfo) != 0) {
 			GetLocalTime(&st);
 			strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
 				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
@@ -244,8 +297,8 @@ void CChatroomServerDlg::OnBnClickedButton1()
 			return;
 		}
 		// Create a socket for listening to clients
-		SOCKET ListenSocket = INVALID_SOCKET;
-		ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+		//SOCKET ListenSocket = INVALID_SOCKET;
+		ListenSocket = socket(serverAddrInfo->ai_family, serverAddrInfo->ai_socktype, serverAddrInfo->ai_protocol);
 		if (ListenSocket == INVALID_SOCKET) {
 			GetLocalTime(&st);
 			strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
@@ -254,12 +307,12 @@ void CChatroomServerDlg::OnBnClickedButton1()
 			listLog.InsertItem(indexLog, strTime);
 			strError.Format(_T("Successfully managed to get error at socket(): %ld."), WSAGetLastError());
 			listLog.SetItemText(indexLog, 1, strError);
-			freeaddrinfo(result);
+			freeaddrinfo(serverAddrInfo);
 			WSACleanup();
 			return;
 		}
 		// Bind the socket to a local address and port
-		if (bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen) == SOCKET_ERROR) {
+		if (bind(ListenSocket, serverAddrInfo->ai_addr, (int)serverAddrInfo->ai_addrlen) == SOCKET_ERROR) {
 			GetLocalTime(&st);
 			strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
 				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
@@ -267,12 +320,12 @@ void CChatroomServerDlg::OnBnClickedButton1()
 			listLog.InsertItem(indexLog, strTime);
 			strError.Format(_T("Successfully failed to bind with error code: %ld."), WSAGetLastError());
 			listLog.SetItemText(indexLog, 1, strError);
-			freeaddrinfo(result);
+			freeaddrinfo(serverAddrInfo);
 			closesocket(ListenSocket);
 			WSACleanup();
 			return;
 		}
-		freeaddrinfo(result);
+		freeaddrinfo(serverAddrInfo);
 		// Listening on a Socket
 		if (listen(ListenSocket, SOMAXCONN) == SOCKET_ERROR) {
 			GetLocalTime(&st);
@@ -287,11 +340,50 @@ void CChatroomServerDlg::OnBnClickedButton1()
 			return;
 		}
 
-		button1.SetWindowText(_T("Stop"));
+		HANDLE completionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+		SYSTEM_INFO systemInfo{};
+		GetSystemInfo(&systemInfo);
+		g_threads.resize(systemInfo.dwNumberOfProcessors * 2);
+		for (DWORD i = 0; i < systemInfo.dwNumberOfProcessors * 2; ++i) {
+			HANDLE thread = CreateThread(NULL, 0, [](LPVOID lpThreadParameter) -> DWORD {
+				HANDLE completionPort = reinterpret_cast<HANDLE>(lpThreadParameter);
+			while (true) {
+				// Wait for an I/O completion packet or the exit event
+				DWORD bytesTransferred;
+				SOCKET completionKey;
+				LPOVERLAPPED overlapped;
+				DWORD waitResult = WaitForSingleObject(g_exitEvent, 0);
+				if (waitResult == WAIT_OBJECT_0) {
+					// Exit the thread if the exit event is signaled
+					break;
+				}
+				waitResult = GetQueuedCompletionStatus(completionPort, &bytesTransferred, &completionKey, &overlapped, INFINITE);
+				if (waitResult != 0) {
+					// Process the I/O completion packet
+					closesocket(completionKey);
+					delete overlapped;
+				}
+			}
+			return 0;
+				}, completionPort, 0, NULL);
+			g_threads[i] = thread;
+		}
+
+		// Update button text and state
+		button1.SetWindowText(_T("Stop Server"));
 	}
-	else {
-		button1.SetWindowText(_T("Start"));
+	else
+	{
+		// Stop the server
+		// Update button text and state
+		// Stop the server
+		SetEvent(g_exitEvent);
+		CloseHandle(g_exitEvent);
+		closesocket(ListenSocket);
+		ListenSocket = INVALID_SOCKET;
+
+		// Update button text and state
+		button1.SetWindowText(_T("Start Server"));
 	}
-	UpdateData(FALSE);
-	return;
 }
+*/
