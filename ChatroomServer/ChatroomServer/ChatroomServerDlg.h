@@ -1,8 +1,10 @@
 
 // ChatroomServerDlg.h : header file
 //
-
 #pragma once
+
+#include <mswsock.h>
+
 #define MAX_BUFF_SIZE       8192
 #define MAX_WORKER_THREAD	128
 // CChatroomServerDlg dialog
@@ -75,3 +77,53 @@ typedef struct _PER_SOCKET_CONTEXT {
 	struct _PER_SOCKET_CONTEXT* pCtxtBack;
 	struct _PER_SOCKET_CONTEXT* pCtxtForward;
 } PER_SOCKET_CONTEXT, * PPER_SOCKET_CONTEXT;
+
+BOOL ValidOptions(int argc, char* argv[]);
+
+BOOL WINAPI CtrlHandler(
+	DWORD dwEvent
+);
+
+BOOL CreateListenSocket(void);
+
+BOOL CreateAcceptSocket(
+	BOOL fUpdateIOCP
+);
+
+DWORD WINAPI WorkerThread(
+	LPVOID WorkContext
+);
+
+PPER_SOCKET_CONTEXT UpdateCompletionPort(
+	SOCKET s,
+	IO_OPERATION ClientIo,
+	BOOL bAddToList
+);
+//
+// bAddToList is FALSE for listening socket, and TRUE for connection sockets.
+// As we maintain the context for listening socket in a global structure, we
+// don't need to add it to the list.
+//
+
+VOID CloseClient(
+	PPER_SOCKET_CONTEXT lpPerSocketContext,
+	BOOL bGraceful
+);
+
+PPER_SOCKET_CONTEXT CtxtAllocate(
+	SOCKET s,
+	IO_OPERATION ClientIO
+);
+
+VOID CtxtListFree(
+);
+
+VOID CtxtListAddTo(
+	PPER_SOCKET_CONTEXT lpPerSocketContext
+);
+
+VOID CtxtListDeleteFrom(
+	PPER_SOCKET_CONTEXT lpPerSocketContext
+);
+
+void LogError(CString strError);

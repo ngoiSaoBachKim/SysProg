@@ -210,7 +210,6 @@ HCURSOR CChatroomServerDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
-char* g_Port = DEFAULT_PORT;
 BOOL g_bEndServer = FALSE;			// set to TRUE on CTRL-C
 BOOL g_bRestart = TRUE;				// set to TRUE to CTRL-BRK
 BOOL g_bVerbose = FALSE;
@@ -218,8 +217,12 @@ DWORD g_dwThreadCount = 0;		//worker thread count
 HANDLE g_hIOCP = INVALID_HANDLE_VALUE;
 SOCKET g_sdListen = INVALID_SOCKET;
 HANDLE g_ThreadHandles[MAX_WORKER_THREAD];
+WSAEVENT g_hCleanupEvent[1];
+PPER_SOCKET_CONTEXT g_pCtxtListenSocket = NULL;
 PPER_SOCKET_CONTEXT g_pCtxtList = NULL;
+CRITICAL_SECTION g_CriticalSection;
 
+//kinda main
 void CChatroomServerDlg::OnBnClickedButton1()
 {
 	UpdateData(TRUE);
@@ -230,11 +233,79 @@ void CChatroomServerDlg::OnBnClickedButton1()
 	{
 		SYSTEM_INFO systemInfo;
 		WSADATA wsaData;
-		SOCKET sdAccept = INVALID_SOCKET;
-		PPER_SOCKET_CONTEXT lpPerSocketContext = NULL;
-		DWORD dwRecvNumBytes = 0;
-		DWORD dwFlags = 0;
+		DWORD dwThreadCount = 0;
 		int nRet = 0;
+
+		g_ThreadHandles[0] = (HANDLE)WSA_INVALID_EVENT;
+
+		for (int i = 0; i < MAX_WORKER_THREAD; i++) {
+			g_ThreadHandles[i] = INVALID_HANDLE_VALUE;
+		}
+
+		GetSystemInfo(&systemInfo);
+		dwThreadCount = systemInfo.dwNumberOfProcessors * 2;
+		
+		if (WSA_INVALID_EVENT == (g_hCleanupEvent[0] = WSACreateEvent()))
+		{
+			//special?
+			LogError(_T("WSACreateEvent() failed: %d\n", WSAGetLastError()));
+			return;
+		}
+
+		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+			LogError(_T("Successfully failed to initializing Winsock"));
+			return;
+		}
+
+		__try
+		{
+			InitializeCriticalSection(&g_CriticalSection);
+
+			g_hIOCP = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+			if (g_hIOCP == NULL) {
+				LogError(_T("CreateIoCompletionPort() failed to create I/O completion port: %d\n",
+					GetLastError()));
+				__leave;
+			}
+
+			for (DWORD dwCPU = 0; dwCPU < dwThreadCount; dwCPU++) {
+
+				//
+				// Create worker threads to service the overlapped I/O requests.  The decision
+				// to create 2 worker threads per CPU in the system is a heuristic.  Also,
+				// note that thread handles are closed right away, because we will not need them
+				// and the worker threads will continue to execute.
+				//
+				HANDLE  hThread;
+				DWORD   dwThreadId;
+
+				hThread = CreateThread(NULL, 0, WorkerThread, g_hIOCP, 0, &dwThreadId);
+				if (hThread == NULL) {
+					myprintf("CreateThread() failed to create worker thread: %d\n",
+						GetLastError());
+					__leave;
+				}
+				g_ThreadHandles[dwCPU] = hThread;
+				hThread = INVALID_HANDLE_VALUE;
+			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER)
+		{
+			LogError(_T("InitializeCriticalSection raised an exception"));
+			return;
+		}
+
+		while (g_bRestart) {
+			g_bRestart = FALSE;
+			g_bEndServer = FALSE;
+			WSAResetEvent(g_hCleanupEvent[0]);
+			__try {
+
+			}
+			__finally {
+
+			}
+		}
 		button1.SetWindowText(_T("Stop"));
 	}
 	else {
@@ -244,6 +315,10 @@ void CChatroomServerDlg::OnBnClickedButton1()
 		button1.SetWindowText(_T("Start"));
 	}
 	UpdateData(FALSE);
+}
+
+void LogError(CString strError) {
+
 }
 
 /*
