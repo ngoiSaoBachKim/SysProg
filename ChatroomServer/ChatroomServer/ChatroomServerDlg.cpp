@@ -48,7 +48,6 @@ Báo cáo với người hướng dẫn để nhận flag
 #define new DEBUG_NEW
 #endif
 
-
 #define xmalloc(s) HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,(s))
 #define xfree(p)   HeapFree(GetProcessHeap(),0,(p))
 #ifdef _DEBUG
@@ -281,8 +280,8 @@ void CChatroomServerDlg::OnBnClickedButton1()
 
 				hThread = CreateThread(NULL, 0, WorkerThread, g_hIOCP, 0, &dwThreadId);
 				if (hThread == NULL) {
-					myprintf("CreateThread() failed to create worker thread: %d\n",
-						GetLastError());
+					LogError(_T("CreateThread() failed to create worker thread: %d\n",
+						GetLastError()));
 					__leave;
 				}
 				g_ThreadHandles[dwCPU] = hThread;
@@ -320,6 +319,8 @@ void CChatroomServerDlg::OnBnClickedButton1()
 void LogError(CString strError) {
 
 }
+
+
 
 /*
  		SetEvent(g_exitEvent);
