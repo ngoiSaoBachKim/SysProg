@@ -281,8 +281,8 @@ void CChatroomServerDlg::OnBnClickedButton1()
 
 				hThread = CreateThread(NULL, 0, WorkerThread, g_hIOCP, 0, &dwThreadId);
 				if (hThread == NULL) {
-					myprintf("CreateThread() failed to create worker thread: %d\n",
-						GetLastError());
+					LogError(_T("CreateThread() failed to create worker thread: %d\n",
+						GetLastError()));
 					__leave;
 				}
 				g_ThreadHandles[dwCPU] = hThread;
