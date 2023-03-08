@@ -48,7 +48,6 @@ Báo cáo với người hướng dẫn để nhận flag
 #define new DEBUG_NEW
 #endif
 
-
 #define xmalloc(s) HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,(s))
 #define xfree(p)   HeapFree(GetProcessHeap(),0,(p))
 #ifdef _DEBUG
@@ -320,6 +319,8 @@ void CChatroomServerDlg::OnBnClickedButton1()
 void LogError(CString strError) {
 
 }
+
+
 
 /*
  		SetEvent(g_exitEvent);
