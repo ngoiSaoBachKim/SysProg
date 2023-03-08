@@ -21,7 +21,7 @@ Editbox: chatroom
 Editbox: ô nhập nội dung chat
 Button SEND: để gửi nội dung chat
 Ghi chú:
-
+d
 Báo cáo với người hướng dẫn để nhận flag
 
 */
@@ -33,27 +33,19 @@ Báo cáo với người hướng dẫn để nhận flag
 #include "ChatroomServer.h"
 #include "ChatroomServerDlg.h"
 #include "afxdialogex.h"
-#include <atlstr.h>
+
+#include <Windows.h>
+#include <WS2tcpip.h>
 #include <cstring>
 #include <string>
-#include <vector>
+#include <winsock2.h>
 #include <atlconv.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <strsafe.h>
-#include <Windows.h>
+
 // ServerDlg.cpp : implementation file
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
-
-#define xmalloc(s) HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,(s))
-#define xfree(p)   HeapFree(GetProcessHeap(),0,(p))
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#endif
-
 
 // CAboutDlg dialog used for App About
 
@@ -151,6 +143,7 @@ BOOL CChatroomServerDlg::OnInitDialog()
 	listLog.InsertColumn(0, _T("Time"), LVCFMT_LEFT, 100);
 	listLog.InsertColumn(1, _T("Event"), LVCFMT_LEFT, 380);
 	listLog.SetColumnWidth(1, LVSCW_AUTOSIZE_USEHEADER);
+
 	listUser.InsertColumn(0, _T("IP Address"), LVCFMT_LEFT, 150);
 	listUser.InsertColumn(1, _T("Port"), LVCFMT_LEFT, 100);
 	listUser.SetColumnWidth(1, LVSCW_AUTOSIZE_USEHEADER);
@@ -209,257 +202,224 @@ HCURSOR CChatroomServerDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
-BOOL g_bEndServer = FALSE;			// set to TRUE on CTRL-C
-BOOL g_bRestart = TRUE;				// set to TRUE to CTRL-BRK
-BOOL g_bVerbose = FALSE;
-DWORD g_dwThreadCount = 0;		//worker thread count
-HANDLE g_hIOCP = INVALID_HANDLE_VALUE;
-SOCKET g_sdListen = INVALID_SOCKET;
-HANDLE g_ThreadHandles[MAX_WORKER_THREAD];
-WSAEVENT g_hCleanupEvent[1];
-PPER_SOCKET_CONTEXT g_pCtxtListenSocket = NULL;
-PPER_SOCKET_CONTEXT g_pCtxtList = NULL;
-CRITICAL_SECTION g_CriticalSection;
-
 //kinda main
 void CChatroomServerDlg::OnBnClickedButton1()
 {
 	UpdateData(TRUE);
-	// Update button text and state
-	CString strStartStatus, strTime, strError;
-	button1.GetWindowText(strStartStatus);
-	if (strStartStatus == _T("Start"))
-	{
-		SYSTEM_INFO systemInfo;
-		WSADATA wsaData;
-		DWORD dwThreadCount = 0;
-		int nRet = 0;
-
-		g_ThreadHandles[0] = (HANDLE)WSA_INVALID_EVENT;
-
-		for (int i = 0; i < MAX_WORKER_THREAD; i++) {
-			g_ThreadHandles[i] = INVALID_HANDLE_VALUE;
-		}
-
-		GetSystemInfo(&systemInfo);
-		dwThreadCount = systemInfo.dwNumberOfProcessors * 2;
-		
-		if (WSA_INVALID_EVENT == (g_hCleanupEvent[0] = WSACreateEvent()))
-		{
-			//special?
-			LogError(_T("WSACreateEvent() failed: %d\n", WSAGetLastError()));
+	WSADATA d;
+	CString strStatus, strLog;
+	button1.GetWindowText(strStatus);
+	// start listening 
+	if (strStatus == _T("Start")) {
+		memset(&d, 0, sizeof d);
+		if (WSAStartup(MAKEWORD(2, 2), &d)) {
+			strLog.Format(_T("Successfully failed to get address info"));
+			Log(strLog);
 			return;
 		}
 
-		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-			LogError(_T("Successfully failed to initializing Winsock"));
-			return;
-		}
-
-		__try
-		{
-			InitializeCriticalSection(&g_CriticalSection);
-
-			g_hIOCP = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
-			if (g_hIOCP == NULL) {
-				LogError(_T("CreateIoCompletionPort() failed to create I/O completion port: %d\n",
-					GetLastError()));
-				__leave;
-			}
-
-			for (DWORD dwCPU = 0; dwCPU < dwThreadCount; dwCPU++) {
-
-				//
-				// Create worker threads to service the overlapped I/O requests.  The decision
-				// to create 2 worker threads per CPU in the system is a heuristic.  Also,
-				// note that thread handles are closed right away, because we will not need them
-				// and the worker threads will continue to execute.
-				//
-				HANDLE  hThread;
-				DWORD   dwThreadId;
-
-				hThread = CreateThread(NULL, 0, WorkerThread, g_hIOCP, 0, &dwThreadId);
-				if (hThread == NULL) {
-					LogError(_T("CreateThread() failed to create worker thread: %d\n",
-						GetLastError()));
-					__leave;
-				}
-				g_ThreadHandles[dwCPU] = hThread;
-				hThread = INVALID_HANDLE_VALUE;
-			}
-		}
-		__except (EXCEPTION_EXECUTE_HANDLER)
-		{
-			LogError(_T("InitializeCriticalSection raised an exception"));
-			return;
-		}
-
-		while (g_bRestart) {
-			g_bRestart = FALSE;
-			g_bEndServer = FALSE;
-			WSAResetEvent(g_hCleanupEvent[0]);
-			__try {
-
-			}
-			__finally {
-
-			}
-		}
-		button1.SetWindowText(_T("Stop"));
-	}
-	else {
-		// Stop the server
-
-		// Update button text and state
-		button1.SetWindowText(_T("Start"));
-	}
-	UpdateData(FALSE);
-}
-
-void LogError(CString strError) {
-
-}
-
-
-
-/*
- 		SetEvent(g_exitEvent);
-		CloseHandle(g_exitEvent);
-		closesocket(ListenSocket);
-		ListenSocket = INVALID_SOCKET;
-void CChatroomServerDlg::OnBnClickedButton1()
-{
-	UpdateData(TRUE);
-	CString strStartStatus, strTime, strError;
-	button1.GetWindowText(strStartStatus);
-	SYSTEMTIME st;
-	int indexLog;
-	if (strStartStatus == _T("Start"))
-	{
-		// Start the server
-		WSADATA wsaData;
-		memset(&wsaData, 0, sizeof(wsaData));
-		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-			GetLocalTime(&st);
-			strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
-				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-			indexLog = listLog.GetItemCount();
-			listLog.InsertItem(indexLog, strTime);
-			strError.Format(_T("Successfully failed to initializing Winsock);
-				listLog.SetItemText(indexLog, 1, strError);
-			return;
-		}
-		struct addrinfo* serverAddrInfo = NULL, hints;
-
-		memset(&hints, 0, sizeof(hints));
+		// config server address
+		addrinfo hints;
+		memset(&hints, 0, sizeof hints);
 		hints.ai_family = AF_INET;
 		hints.ai_socktype = SOCK_STREAM;
 		hints.ai_protocol = IPPROTO_TCP;
 		hints.ai_flags = AI_PASSIVE;
 
-		// Resolve the local address and port to be used by the server
-		CString ip = editIP.GetString();
-		CString port = editPort.GetString();
+		USES_CONVERSION;
+		addrinfo* bind_address;
+		std::string ip = CT2A(editIP.GetString()), port = CT2A(editPort.GetString());
+		const char* cip = ip.c_str(), * cport = port.c_str();
+		getaddrinfo(cip, cport, &hints, &bind_address);
 
-		if (getaddrinfo((PCSTR)(CStringA)ip, (PCSTR)(CStringA)port, &hints, &serverAddrInfo) != 0) {
-			GetLocalTime(&st);
-			strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
-				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-			indexLog = listLog.GetItemCount();
-			listLog.InsertItem(indexLog, strTime);
-			strError.Format(_T("Successfully failed to get address info(error code %ld)."), WSAGetLastError());
-			listLog.SetItemText(indexLog, 1, strError);
-			WSACleanup();
+		// create socket
+		sock_listen = socket(bind_address->ai_family, bind_address->ai_socktype, bind_address->ai_protocol);
+		if (sock_listen == INVALID_SOCKET) {
+			strLog.Format(_T("Socket creating failed with error code 0x%X"), WSAGetLastError());
+			Log(strLog);
 			return;
 		}
-		// Create a socket for listening to clients
-		//SOCKET ListenSocket = INVALID_SOCKET;
-		ListenSocket = socket(serverAddrInfo->ai_family, serverAddrInfo->ai_socktype, serverAddrInfo->ai_protocol);
-		if (ListenSocket == INVALID_SOCKET) {
-			GetLocalTime(&st);
-			strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
-				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-			indexLog = listLog.GetItemCount();
-			listLog.InsertItem(indexLog, strTime);
-			strError.Format(_T("Successfully managed to get error at socket(): %ld."), WSAGetLastError());
-			listLog.SetItemText(indexLog, 1, strError);
-			freeaddrinfo(serverAddrInfo);
-			WSACleanup();
+		// bind socket to IP address
+		if (bind(sock_listen, bind_address->ai_addr, bind_address->ai_addrlen)) {
+			strLog.Format(_T("Socket binding failed with error code 0x%X"), WSAGetLastError());
+			Log(strLog);
 			return;
 		}
-		// Bind the socket to a local address and port
-		if (bind(ListenSocket, serverAddrInfo->ai_addr, (int)serverAddrInfo->ai_addrlen) == SOCKET_ERROR) {
-			GetLocalTime(&st);
-			strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
-				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-			indexLog = listLog.GetItemCount();
-			listLog.InsertItem(indexLog, strTime);
-			strError.Format(_T("Successfully failed to bind with error code: %ld."), WSAGetLastError());
-			listLog.SetItemText(indexLog, 1, strError);
-			freeaddrinfo(serverAddrInfo);
-			closesocket(ListenSocket);
-			WSACleanup();
-			return;
-		}
-		freeaddrinfo(serverAddrInfo);
-		// Listening on a Socket
-		if (listen(ListenSocket, SOMAXCONN) == SOCKET_ERROR) {
-			GetLocalTime(&st);
-			strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
-				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-			indexLog = listLog.GetItemCount();
-			listLog.InsertItem(indexLog, strTime);
-			strError.Format(_T("Successfully failed to listen with error code: %ld."), WSAGetLastError());
-			listLog.SetItemText(indexLog, 1, strError);
-			closesocket(ListenSocket);
-			WSACleanup();
+		freeaddrinfo(bind_address);
+
+		// enter listening state
+		if (listen(sock_listen, 10) < 0) {
+			strLog.Format(_T("Listening failed with error code 0x%X"), WSAGetLastError());
+			Log(strLog);
 			return;
 		}
 
-		HANDLE completionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
-		SYSTEM_INFO systemInfo{};
-		GetSystemInfo(&systemInfo);
-		g_threads.resize(systemInfo.dwNumberOfProcessors * 2);
-		for (DWORD i = 0; i < systemInfo.dwNumberOfProcessors * 2; ++i) {
-			HANDLE thread = CreateThread(NULL, 0, [](LPVOID lpThreadParameter) -> DWORD {
-				HANDLE completionPort = reinterpret_cast<HANDLE>(lpThreadParameter);
-			while (true) {
-				// Wait for an I/O completion packet or the exit event
-				DWORD bytesTransferred;
-				SOCKET completionKey;
-				LPOVERLAPPED overlapped;
-				DWORD waitResult = WaitForSingleObject(g_exitEvent, 0);
-				if (waitResult == WAIT_OBJECT_0) {
-					// Exit the thread if the exit event is signaled
-					break;
+		// create master thread for server
+		mctParam.wndHandler = this;
+		mctParam.lpParam = (LPVOID)sock_listen;
+		hMasterThread = AfxBeginThread(MasterThread, (LPVOID)&mctParam);
+
+		// waiting for connections
+		strLog = _T("Started server");
+		Log(strLog);
+		serverStopStatus = FALSE;
+	}
+	else {
+		serverStopStatus = TRUE;
+		closesocket(sock_listen);
+		sock_listen = INVALID_SOCKET;
+		CloseHandle(hMasterThread->m_hThread);
+		hMasterThread->m_hThread = NULL;
+		listUser.DeleteAllItems();
+
+		strLog = _T("Server closed");
+		Log(strLog);
+		button1.SetWindowText(_T("Start"));
+	}
+	UpdateData(FALSE);
+}
+
+void Log(CString strError) {
+	SYSTEMTIME time;
+	CString strTime;
+	GetLocalTime(&time);
+	strTime.Format(_T("%04d/%02d/%02d %02d:%02d:%02d"),
+		time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond);
+	int indexLog = listLog.GetItemCount();
+	listLog.InsertItem(indexLog, strTime);
+	listLog.SetItemText(indexLog, 1, strError);
+	return;
+}
+
+UINT CChatroomServerDlg::MasterThread(LPVOID lpParam) {
+	MultiCardThreadParam* mctParam = (MultiCardThreadParam*)lpParam;
+	CChatroomServerDlg* svDlg = (CChatroomServerDlg*)mctParam->wndHandler;
+	SOCKET sock_listen = (SOCKET)mctParam->lpParam;
+	SYSTEMTIME time;
+	CString strStatus, strTime, strLog, editIP, editPort, strMsg;
+	CStringA straMsg, straStatus;
+	int iChat, iUser;
+	char ceditIP[INET_ADDRSTRLEN];
+	USES_CONVERSION;
+
+	// manage active sockets
+	fd_set master;
+	FD_ZERO(&master);
+	FD_SET(sock_listen, &master);
+	SOCKET max_socket = sock_listen;
+
+	while (!svDlg->serverStopStatus) {
+		fd_set reads;
+		reads = master;
+		if (select(max_socket + 1, &reads, 0, 0, 0) < 0) {
+			strLog.Format(_T("Socket selecting failed with error code 0x%X"), WSAGetLastError());
+			Log(strLog);
+			return FALSE;
+		}
+
+		SOCKET iSock;
+		for (iSock = 1; iSock <= max_socket; ++iSock)
+			if (FD_ISSET(iSock, &reads)) {
+				// accept connection, add to master
+				if (iSock == sock_listen) {
+					sockaddr_in client_address;
+					socklen_t client_len = sizeof client_address;
+					SOCKET sock_client = accept(sock_listen, (sockaddr*)&client_address, &client_len);
+					if (sock_client == INVALID_SOCKET)
+						if (!svDlg->serverStopStatus) {
+							strLog.Format(_T("Socket selecting failed with error code 0x%X"), WSAGetLastError());
+							Log(strLog);
+							return FALSE;
+						}
+						else {
+							//server closed
+							for (SOCKET jSock = 1; jSock <= max_socket; ++jSock)
+								if (FD_ISSET(jSock, &master))
+									closesocket(jSock);
+							return FALSE;
+							//// push notifications to chatroom
+						}
+
+					FD_SET(sock_client, &master);
+					if (sock_client > max_socket)
+						max_socket = sock_client;
+
+					inet_ntop(AF_INET, &client_address.sin_addr, ceditIP, INET_ADDRSTRLEN);
+					editIP = ceditIP;
+					editPort.Format(_T("%d"), ntohs(client_address.sin_port));
+
+					// update server logs
+					strLog.Format(_T("New connection from IP %s"), (PCTSTR)editIP);
+					Log(strLog);
+
+					iUser = svDlg->listUser.GetItemCount();
+					svDlg->listUser.InsertItem(iUser, editIP);
+					svDlg->listUser.SetItemText(iUser, 1, editPort);
+
+					// push notifications to chatroom
+					strStatus.Format(_T("IP %s joined the chat"), (PCTSTR)editIP);
+					//const char* cstrStatus = (PCSTR)(PCTSTR)strStatus;
+					for (SOCKET jSock = 1; jSock <= max_socket; ++jSock)
+						if (FD_ISSET(jSock, &master))
+							if (jSock == sock_listen)
+								continue;
+							else {
+								std::string stt = CT2A(strStatus);
+								send(jSock, stt.c_str(), (int)stt.size(), 0);
+								//send(jSock, straStatus, sizeof straStatus, 0);
+							}
 				}
-				waitResult = GetQueuedCompletionStatus(completionPort, &bytesTransferred, &completionKey, &overlapped, INFINITE);
-				if (waitResult != 0) {
-					// Process the I/O completion packet
-					closesocket(completionKey);
-					delete overlapped;
+				// read request for an established connection and send data
+				else {
+					char read[1024];
+					int bytes_received = recv(iSock, read, 1024, 0);
+
+					// client disconnected
+					if (bytes_received < 1) {
+						// send new log to server
+						strLog.Format(_T("IP %s disconnected"), (LPCTSTR)editIP);
+						Log(strLog);
+
+						// send notification to chat room
+						strStatus.Format(_T("IP %s left the chat"), (LPCTSTR)editIP);
+						for (SOCKET jSock = 1; jSock <= max_socket; ++jSock)
+							if (FD_ISSET(jSock, &master))
+								if (jSock == sock_listen || jSock == iSock)
+									continue;
+								else {
+									std::string stt = CT2A(strStatus);
+									send(jSock, stt.c_str(), stt.size(), 0);
+								}
+
+						// delete from user list
+						for (int iItem = 0; iItem < svDlg->listUser.GetItemCount(); ++iItem) {
+							if (svDlg->listUser.GetItemText(iItem, 0) == editIP && svDlg->listUser.GetItemText(iItem, 1) == editPort)
+								svDlg->listUser.DeleteItem(iItem);
+						}
+
+						FD_CLR(iSock, &master);
+						closesocket(iSock);
+						continue;
+					}
+					// send messages to chat room
+					for (SOCKET jSock = 1; jSock <= max_socket; ++jSock)
+						if (FD_ISSET(jSock, &master))
+							if (jSock == sock_listen)
+								continue;
+					// self-message
+							else if (jSock == iSock) {
+								straMsg.Format("You: %.*s", bytes_received, read);
+								std::string msg = straMsg;
+								send(jSock, msg.c_str(), msg.size(), 0);
+							}
+					// other ip see
+							else {
+								straMsg.Format("%s: %.*s", ceditIP, bytes_received, read);
+								std::string msg = straMsg;
+								send(jSock, msg.c_str(), msg.size(), 0);
+							}
 				}
 			}
-			return 0;
-				}, completionPort, 0, NULL);
-			g_threads[i] = thread;
-		}
-
-		// Update button text and state
-		button1.SetWindowText(_T("Stop Server"));
 	}
-	else
-	{
-		// Stop the server
-		// Update button text and state
-		// Stop the server
-		SetEvent(g_exitEvent);
-		CloseHandle(g_exitEvent);
-		closesocket(ListenSocket);
-		ListenSocket = INVALID_SOCKET;
-
-		// Update button text and state
-		button1.SetWindowText(_T("Start Server"));
-	}
+	return TRUE;
 }
-*/
