@@ -257,7 +257,7 @@ void CChatroomServerDlg::OnBnClickedButton1()
 		// create master thread for server
 		mctParam.wndHandler = this;
 		mctParam.lpParam = (LPVOID)sock_listen;
-		hMasterThread = AfxBeginThread(MasterThread, (LPVOID)&mctParam);
+		hTransitThread = AfxBeginThread(TransitThread, (LPVOID)&mctParam);
 
 		// waiting for connections
 		strLog = _T("Started server");
@@ -268,8 +268,8 @@ void CChatroomServerDlg::OnBnClickedButton1()
 		serverStopStatus = TRUE;
 		closesocket(sock_listen);
 		sock_listen = INVALID_SOCKET;
-		CloseHandle(hMasterThread->m_hThread);
-		hMasterThread->m_hThread = NULL;
+		CloseHandle(hTransitThread->m_hThread);
+		hTransitThread->m_hThread = NULL;
 		listUser.DeleteAllItems();
 
 		strLog = _T("Server closed");
@@ -279,7 +279,7 @@ void CChatroomServerDlg::OnBnClickedButton1()
 	UpdateData(FALSE);
 }
 
-void Log(CString strError) {
+void CChatroomServerDlg::Log(CString strError) {
 	SYSTEMTIME time;
 	CString strTime;
 	GetLocalTime(&time);
@@ -289,137 +289,4 @@ void Log(CString strError) {
 	listLog.InsertItem(indexLog, strTime);
 	listLog.SetItemText(indexLog, 1, strError);
 	return;
-}
-
-UINT CChatroomServerDlg::MasterThread(LPVOID lpParam) {
-	MultiCardThreadParam* mctParam = (MultiCardThreadParam*)lpParam;
-	CChatroomServerDlg* svDlg = (CChatroomServerDlg*)mctParam->wndHandler;
-	SOCKET sock_listen = (SOCKET)mctParam->lpParam;
-	SYSTEMTIME time;
-	CString strStatus, strTime, strLog, editIP, editPort, strMsg;
-	CStringA straMsg, straStatus;
-	int iChat, iUser;
-	char ceditIP[INET_ADDRSTRLEN];
-	USES_CONVERSION;
-
-	// manage active sockets
-	fd_set master;
-	FD_ZERO(&master);
-	FD_SET(sock_listen, &master);
-	SOCKET max_socket = sock_listen;
-
-	while (!svDlg->serverStopStatus) {
-		fd_set reads;
-		reads = master;
-		if (select(max_socket + 1, &reads, 0, 0, 0) < 0) {
-			strLog.Format(_T("Socket selecting failed with error code 0x%X"), WSAGetLastError());
-			Log(strLog);
-			return FALSE;
-		}
-
-		SOCKET iSock;
-		for (iSock = 1; iSock <= max_socket; ++iSock)
-			if (FD_ISSET(iSock, &reads)) {
-				// accept connection, add to master
-				if (iSock == sock_listen) {
-					sockaddr_in client_address;
-					socklen_t client_len = sizeof client_address;
-					SOCKET sock_client = accept(sock_listen, (sockaddr*)&client_address, &client_len);
-					if (sock_client == INVALID_SOCKET)
-						if (!svDlg->serverStopStatus) {
-							strLog.Format(_T("Socket selecting failed with error code 0x%X"), WSAGetLastError());
-							Log(strLog);
-							return FALSE;
-						}
-						else {
-							//server closed
-							for (SOCKET jSock = 1; jSock <= max_socket; ++jSock)
-								if (FD_ISSET(jSock, &master))
-									closesocket(jSock);
-							return FALSE;
-							//// push notifications to chatroom
-						}
-
-					FD_SET(sock_client, &master);
-					if (sock_client > max_socket)
-						max_socket = sock_client;
-
-					inet_ntop(AF_INET, &client_address.sin_addr, ceditIP, INET_ADDRSTRLEN);
-					editIP = ceditIP;
-					editPort.Format(_T("%d"), ntohs(client_address.sin_port));
-
-					// update server logs
-					strLog.Format(_T("New connection from IP %s"), (PCTSTR)editIP);
-					Log(strLog);
-
-					iUser = svDlg->listUser.GetItemCount();
-					svDlg->listUser.InsertItem(iUser, editIP);
-					svDlg->listUser.SetItemText(iUser, 1, editPort);
-
-					// push notifications to chatroom
-					strStatus.Format(_T("IP %s joined the chat"), (PCTSTR)editIP);
-					//const char* cstrStatus = (PCSTR)(PCTSTR)strStatus;
-					for (SOCKET jSock = 1; jSock <= max_socket; ++jSock)
-						if (FD_ISSET(jSock, &master))
-							if (jSock == sock_listen)
-								continue;
-							else {
-								std::string stt = CT2A(strStatus);
-								send(jSock, stt.c_str(), (int)stt.size(), 0);
-								//send(jSock, straStatus, sizeof straStatus, 0);
-							}
-				}
-				// read request for an established connection and send data
-				else {
-					char read[1024];
-					int bytes_received = recv(iSock, read, 1024, 0);
-
-					// client disconnected
-					if (bytes_received < 1) {
-						// send new log to server
-						strLog.Format(_T("IP %s disconnected"), (LPCTSTR)editIP);
-						Log(strLog);
-
-						// send notification to chat room
-						strStatus.Format(_T("IP %s left the chat"), (LPCTSTR)editIP);
-						for (SOCKET jSock = 1; jSock <= max_socket; ++jSock)
-							if (FD_ISSET(jSock, &master))
-								if (jSock == sock_listen || jSock == iSock)
-									continue;
-								else {
-									std::string stt = CT2A(strStatus);
-									send(jSock, stt.c_str(), stt.size(), 0);
-								}
-
-						// delete from user list
-						for (int iItem = 0; iItem < svDlg->listUser.GetItemCount(); ++iItem) {
-							if (svDlg->listUser.GetItemText(iItem, 0) == editIP && svDlg->listUser.GetItemText(iItem, 1) == editPort)
-								svDlg->listUser.DeleteItem(iItem);
-						}
-
-						FD_CLR(iSock, &master);
-						closesocket(iSock);
-						continue;
-					}
-					// send messages to chat room
-					for (SOCKET jSock = 1; jSock <= max_socket; ++jSock)
-						if (FD_ISSET(jSock, &master))
-							if (jSock == sock_listen)
-								continue;
-					// self-message
-							else if (jSock == iSock) {
-								straMsg.Format("You: %.*s", bytes_received, read);
-								std::string msg = straMsg;
-								send(jSock, msg.c_str(), msg.size(), 0);
-							}
-					// other ip see
-							else {
-								straMsg.Format("%s: %.*s", ceditIP, bytes_received, read);
-								std::string msg = straMsg;
-								send(jSock, msg.c_str(), msg.size(), 0);
-							}
-				}
-			}
-	}
-	return TRUE;
 }

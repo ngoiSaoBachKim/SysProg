@@ -35,7 +35,7 @@ protected:
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
 
-	CWinThread* hMasterThread;
+	CWinThread* hTransitThread;
 public:
 	CListCtrl listLog;
 protected:
@@ -51,7 +51,8 @@ public:
 	MultiCardThreadParam mctParam;
 
 	void Log(CString strError);
-	static UINT MasterThread(LPVOID lpParam);
+	static UINT TransitThread(LPVOID lpParam);
 	BOOL serverStopStatus;
 	afx_msg void OnBnClickedButton1();
+	UINT MemberThreadProc(LPVOID lpParam);
 };
