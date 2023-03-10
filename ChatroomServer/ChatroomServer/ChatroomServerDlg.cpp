@@ -1,4 +1,4 @@
-﻿/*SysProg #3 - Chatroom
+/*SysProg #3 - Chatroom
 100
 Viết chương trình chat client-server Yêu cầu:
 
