@@ -5,9 +5,13 @@
 
 #include <mswsock.h>
 
-#define MAX_BUFF_SIZE       8192
-#define MAX_WORKER_THREAD	128
 // CChatroomServerDlg dialog
+
+typedef struct _MultiCardThreadParam {
+	CWnd* wndHandler;
+	LPVOID lpParam;
+} MultiCardThreadParam;
+
 class CChatroomServerDlg : public CDialogEx
 {
 // Construction
@@ -26,7 +30,7 @@ public:
 // Implementation
 protected:
 	HICON m_hIcon;
-	SOCKET sock_listen;
+	SOCKET ListenSocket;
 
 	// Generated message map functions
 	virtual BOOL OnInitDialog();
@@ -35,23 +39,17 @@ protected:
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
 
-	CWinThread* hMasterThread;
+	CWinThread* hMFCWorkerThread;
 public:
 	CListCtrl listLog;
 protected:
-	CString editIP;
-	CString editPort;
+	CString strEditIP;
+	CString strEditPort;
 	CButton button1;
 	CListCtrl listUser;
 public:
-	typedef struct _MultiCardThreadParam {
-		CWnd* wndHandler;
-		LPVOID lpParam;
-	} MultiCardThreadParam;
 	MultiCardThreadParam mctParam;
-
-	void Log(CString strError);
-	static UINT MasterThread(LPVOID lpParam);
-	BOOL serverStopStatus;
+	static UINT MFCWorkerThread(LPVOID lpParam);
+	BOOL serverStopStatus = TRUE;
 	afx_msg void OnBnClickedButton1();
 };
